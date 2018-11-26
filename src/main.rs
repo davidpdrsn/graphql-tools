@@ -1,5 +1,9 @@
 use failure::{bail, Error};
+use lazy_static::lazy_static;
+use regex::Regex;
 use structopt::StructOpt;
+
+mod format;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "gqltools", about = "GraphQL tools")]
@@ -55,18 +59,54 @@ fn main() {
     };
 }
 
-fn validate_query(query_path: String, schema_path: String) -> Result<(), Error> {
+type Output = Result<(), Error>;
+
+fn validate_query(query_path: String, schema_path: String) -> Output {
     unimplemented!()
 }
 
-fn validate_schema(schema_path: String) -> Result<(), Error> {
+fn validate_schema(schema_path: String) -> Output {
     unimplemented!()
 }
 
-fn validate(file_path: String) -> Result<(), Error> {
+fn validate(file_path: String) -> Output {
     unimplemented!()
 }
 
-fn format(file_path: String) -> Result<(), Error> {
-    unimplemented!()
+fn format(file_path: String) -> Output {
+    let contents = read_file(&file_path)?;
+
+    if is_query(&contents) {
+        format::query::format(&contents)?;
+    } else if is_schema(&contents) {
+        format::schema::format(&contents)?;
+    } else {
+        bail!("Thats neither a query nor a schema");
+    }
+
+    Ok(())
+}
+
+fn is_query(contents: &str) -> bool {
+    lazy_static! {
+        static ref query_re: Regex = Regex::new(r"^(query|mutation)").unwrap();
+    }
+    contents.lines().any(|line| query_re.is_match(line))
+}
+
+fn is_schema(contents: &str) -> bool {
+    lazy_static! {
+        static ref schema_re: Regex = Regex::new(r"^schema").unwrap();
+    }
+    contents.lines().any(|line| schema_re.is_match(line))
+}
+
+fn read_file(file: &str) -> Result<String, Error> {
+    use std::fs::File;
+    use std::io::prelude::*;
+
+    let mut f = File::open(file)?;
+    let mut contents = String::new();
+    f.read_to_string(&mut contents)?;
+    Ok(contents)
 }
