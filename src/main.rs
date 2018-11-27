@@ -40,6 +40,9 @@ enum Opt {
         /// The file to format.
         /// It'll be inferred from the contents if its a query or a schema.
         file: String,
+        /// Write the formatted output back to the file
+        #[structopt(short = "w", long = "write")]
+        write: bool,
     },
 }
 
@@ -50,7 +53,7 @@ fn main() {
         Opt::Query { file, schema } => validate_query(file, schema),
         Opt::Schema { file } => validate_schema(file),
         Opt::Validate { file } => validate(file),
-        Opt::Format { file } => format(file),
+        Opt::Format { file, write } => format(file, write),
     };
 
     match res {
@@ -76,15 +79,21 @@ fn validate(file_path: String) -> Output {
     unimplemented!()
 }
 
-fn format(file_path: String) -> Output {
+fn format(file_path: String, write: bool) -> Output {
     let contents = read_file(&file_path)?;
 
-    if is_query(&contents) {
-        format::query::format(&contents)?;
+    let out = if is_query(&contents) {
+        format::query::format(&contents)?
     } else if is_schema(&contents) {
-        format::schema::format(&contents)?;
+        format::schema::format(&contents)?
     } else {
         bail!("Thats neither a query nor a schema");
+    };
+
+    if write {
+        write_file(file_path, out);
+    } else {
+        println!("{}", out);
     }
 
     Ok(())
@@ -112,4 +121,13 @@ fn read_file(file: &str) -> Result<String, Error> {
     let mut contents = String::new();
     f.read_to_string(&mut contents)?;
     Ok(contents)
+}
+
+fn write_file(file_path: String, out: String) -> Result<(), Error> {
+    use std::fs::File;
+    use std::io::prelude::*;
+
+    let mut file = File::create(file_path)?;
+    file.write_all(out.as_bytes())?;
+    Ok(())
 }
