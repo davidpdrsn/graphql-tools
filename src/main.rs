@@ -6,6 +6,7 @@ use structopt::StructOpt;
 #[macro_use]
 mod macros;
 
+mod diff;
 mod format;
 
 #[derive(StructOpt, Debug)]
@@ -43,6 +44,9 @@ enum Opt {
         /// Write the formatted output back to the file
         #[structopt(short = "w", long = "write")]
         write: bool,
+        /// Write the formatted output back to the file
+        #[structopt(long = "check")]
+        check: bool,
     },
 }
 
@@ -53,7 +57,7 @@ fn main() {
         Opt::Query { file, schema } => validate_query(file, schema),
         Opt::Schema { file } => validate_schema(file),
         Opt::Validate { file } => validate(file),
-        Opt::Format { file, write } => format(file, write),
+        Opt::Format { file, write, check } => format(file, write, check),
     };
 
     match res {
@@ -79,10 +83,15 @@ fn validate(file_path: String) -> Output {
     unimplemented!()
 }
 
-fn format(file_path: String, write: bool) -> Output {
+fn format(file_path: String, write: bool, check: bool) -> Output {
+    if write && check {
+        eprintln!("format cannot both check and write");
+        std::process::exit(1);
+    }
+
     let contents = read_file(&file_path)?;
 
-    let out = if is_query(&contents) {
+    let formatted = if is_query(&contents) {
         format::query::format(&contents)?
     } else if is_schema(&contents) {
         format::schema::format(&contents)?
@@ -91,9 +100,14 @@ fn format(file_path: String, write: bool) -> Output {
     };
 
     if write {
-        write_file(file_path, out);
+        write_file(file_path, formatted)?;
+    } else if check {
+        if formatted.trim() != contents.trim() {
+            print_diff(&formatted, &contents);
+            std::process::exit(1);
+        }
     } else {
-        println!("{}", out);
+        println!("{}", formatted);
     }
 
     Ok(())
@@ -130,4 +144,10 @@ fn write_file(file_path: String, out: String) -> Result<(), Error> {
     let mut file = File::create(file_path)?;
     file.write_all(out.as_bytes())?;
     Ok(())
+}
+
+fn print_diff(formatted: &str, contents: &str) {
+    use self::diff;
+    let diff = diff::make_diff(contents, formatted, formatted.len());
+    diff::print_diff(diff);
 }
