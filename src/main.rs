@@ -3,6 +3,9 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use structopt::StructOpt;
 
+#[macro_use]
+mod macros;
+
 mod format;
 
 #[derive(StructOpt, Debug)]
