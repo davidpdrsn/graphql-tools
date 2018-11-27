@@ -110,7 +110,7 @@ impl std::fmt::Display for OperationType {
 }
 
 fn format_selection_set(set: SelectionSet, indent: &mut Indentation, out: &mut Output) {
-    let items = set.items;
+    let mut items = set.items;
 
     if items.is_empty() {
         return;
@@ -118,15 +118,41 @@ fn format_selection_set(set: SelectionSet, indent: &mut Indentation, out: &mut O
 
     out.push_str(" {\n");
     indent.increment();
+
+    items.sort_unstable_by_key(selection_set_sort_key);
+
     for selection in items {
         match selection {
             Selection::Field(field) => format_field(field, indent, out),
-            Selection::FragmentSpread(frag_spread) => todo!("frag_spread"),
+            Selection::FragmentSpread(frag_spread) => {
+                todo_field!(frag_spread.directives);
+                out.push(&format!("...{}\n", frag_spread.fragment_name), indent);
+            }
             Selection::InlineFragment(inline_frag) => todo!("inline_frag"),
         }
     }
     indent.decrement();
     out.push("}\n", indent);
+}
+
+fn selection_set_sort_key(sel: &Selection) -> (usize, String) {
+    match sel {
+        Selection::FragmentSpread(frag_spread) => (1, frag_spread.fragment_name.clone()),
+        Selection::InlineFragment(inline_frag) => {
+            if let Some(TypeCondition::On(ref name)) = inline_frag.type_condition {
+                (2, name.clone())
+            } else {
+                (2, "zzzzz".to_string())
+            }
+        }
+        Selection::Field(field) => {
+            if field.selection_set.items.is_empty() {
+                (3, field.name.clone())
+            } else {
+                (4, field.name.clone())
+            }
+        }
+    }
 }
 
 fn format_field(field: Field, indent: &mut Indentation, out: &mut Output) {
@@ -145,11 +171,12 @@ fn format_field(field: Field, indent: &mut Indentation, out: &mut Output) {
         out.push_str("(");
         let current_line_length = out.current_line_length();
 
-        let args = field
+        let mut args = field
             .arguments
             .iter()
             .map(|(key, value)| format!("{arg}: {value}", arg = key, value = value.to_string()))
             .collect::<Vec<_>>();
+        args.sort_unstable();
         let args_joined = args.join(", ") + ")";
 
         let line_length_with_args = current_line_length + args_joined.len();
@@ -224,15 +251,15 @@ query One {
 query Two {
   firstName
   lastName
+  country {
+    id
+  }
   team {
     id
     slug
     league {
       id
     }
-  }
-  country {
-    id
   }
 }
             "
@@ -351,6 +378,34 @@ mutation NewUser {
 mutation NewUser {
   newUser(name: \"Bob\") {
     id
+  }
+}
+            "
+        .trim();
+
+        if actual != expected {
+            println!("Actual:\n\n{}\n", actual);
+            println!("Expected:\n\n{}", expected);
+            panic!("expected != actual");
+        }
+    }
+
+    #[test]
+    fn sorting_args() {
+        let query = "
+query UserProfile {
+  user(x: 1, h: 1, a: 1) {
+    team
+  }
+}
+        "
+        .trim();
+
+        let actual = format(query).unwrap();
+        let expected = "
+query UserProfile {
+  user(a: 1, h: 1, x: 1) {
+    team
   }
 }
             "
