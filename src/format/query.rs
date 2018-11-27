@@ -30,24 +30,67 @@ fn format_def(def: Definition, indent: &mut Indentation, out: &mut Output) {
 
 fn format_operation(op: OperationDefinition, indent: &mut Indentation, out: &mut Output) {
     match op {
+        OperationDefinition::Query(query) => format_query_type(QueryType::Query(query), indent, out),
+        OperationDefinition::Mutation(query) => format_query_type(QueryType::Mutation(query), indent, out),
         OperationDefinition::SelectionSet(set) => todo!("selection set"),
-
-        OperationDefinition::Query(query) => {
-            todo_field!(query, variable_definitions);
-            todo_field!(query, directives);
-
-            if let Some(name) = query.name {
-                out.push(&format!("query {name}", name = name), indent);
-            } else {
-                out.push("query", indent);
-            }
-            format_selection_set(query.selection_set, indent, out);
-            out.push_str("\n");
-        }
-
-        OperationDefinition::Mutation(mutation) => todo!("mutation"),
-
         OperationDefinition::Subscription(sub) => todo!("sub"),
+    }
+}
+
+fn format_query_type(r#type: QueryType, indent: &mut Indentation, out: &mut Output) {
+    todo_field!(r#type.variable_definitions());
+    todo_field!(r#type.directives());
+
+    if let Some(name) = r#type.name() {
+        out.push(&format!("{type_} {name}", type_ = r#type.to_string(), name = name), indent);
+    } else {
+        out.push("query", indent);
+    }
+    format_selection_set(r#type.selection_set().clone(), indent, out);
+    out.push_str("\n");
+}
+
+enum QueryType {
+    Query(Query),
+    Mutation(Mutation),
+}
+
+impl QueryType {
+    fn selection_set(&self) -> &SelectionSet {
+        match self {
+            QueryType::Query(q) => &q.selection_set,
+            QueryType::Mutation(m) => &m.selection_set,
+        }
+    }
+
+    fn name(&self) -> &Option<String> {
+        match self {
+            QueryType::Query(q) => &q.name,
+            QueryType::Mutation(m) => &m.name,
+        }
+    }
+
+    fn directives(&self) -> &Vec<Directive> {
+        match self {
+            QueryType::Query(q) => &q.directives,
+            QueryType::Mutation(m) => &m.directives,
+        }
+    }
+
+    fn variable_definitions(&self) -> &Vec<VariableDefinition> {
+        match self {
+            QueryType::Query(q) => &q.variable_definitions,
+            QueryType::Mutation(m) => &m.variable_definitions,
+        }
+    }
+}
+
+impl std::fmt::Display for QueryType {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            QueryType::Query(_) => write!(f, "query"),
+            QueryType::Mutation(_) => write!(f, "mutation"),
+        }
     }
 }
 
@@ -72,7 +115,7 @@ fn format_selection_set(set: SelectionSet, indent: &mut Indentation, out: &mut O
 }
 
 fn format_field(field: Field, indent: &mut Indentation, out: &mut Output) {
-    todo_field!(field, directives);
+    todo_field!(field.directives);
 
     if let Some(alias) = field.alias {
         out.push(
@@ -267,6 +310,32 @@ query UserProfile {
     a: 123,
   ) {
     team
+  }
+}
+            "
+        .trim();
+
+        if actual != expected {
+            println!("Actual:\n\n{}\n", actual);
+            println!("Expected:\n\n{}", expected);
+            panic!("expected != actual");
+        }
+    }
+
+    #[test]
+    fn mutation() {
+        let query = "
+mutation NewUser {
+  newUser(name: \"Bob\") { id }
+}
+        "
+        .trim();
+
+        let actual = format(query).unwrap();
+        let expected = "
+mutation NewUser {
+  newUser(name: \"Bob\") {
+    id
   }
 }
             "

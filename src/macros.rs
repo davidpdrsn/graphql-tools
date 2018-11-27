@@ -5,9 +5,9 @@ macro_rules! todo {
 }
 
 macro_rules! todo_field {
-    ($value:ident, $field:ident) => {
-        if !$value.$field.is_empty() {
-            todo!(stringify!($value.$field));
+    ($value:expr) => {
+        if !$value.is_empty() {
+            todo!(stringify!($value));
         }
     };
 }
