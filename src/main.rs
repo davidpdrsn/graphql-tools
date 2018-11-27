@@ -91,12 +91,10 @@ fn format(file_path: String, write: bool, check: bool) -> Output {
 
     let contents = read_file(&file_path)?;
 
-    let formatted = if is_query(&contents) {
-        format::query::format(&contents)?
-    } else if is_schema(&contents) {
+    let formatted = if is_schema(&contents) {
         format::schema::format(&contents)?
     } else {
-        bail!("Thats neither a query nor a schema");
+        format::query::format(&contents)?
     };
 
     if write {
@@ -111,13 +109,6 @@ fn format(file_path: String, write: bool, check: bool) -> Output {
     }
 
     Ok(())
-}
-
-fn is_query(contents: &str) -> bool {
-    lazy_static! {
-        static ref query_re: Regex = Regex::new(r"^(query|mutation)").unwrap();
-    }
-    contents.lines().any(|line| query_re.is_match(line))
 }
 
 fn is_schema(contents: &str) -> bool {

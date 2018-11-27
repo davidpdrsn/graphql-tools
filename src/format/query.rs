@@ -30,19 +30,28 @@ fn format_def(def: Definition, indent: &mut Indentation, out: &mut Output) {
 
 fn format_operation(op: OperationDefinition, indent: &mut Indentation, out: &mut Output) {
     match op {
-        OperationDefinition::Query(query) => format_query_type(QueryType::Query(query), indent, out),
-        OperationDefinition::Mutation(query) => format_query_type(QueryType::Mutation(query), indent, out),
-        OperationDefinition::SelectionSet(set) => todo!("selection set"),
-        OperationDefinition::Subscription(sub) => todo!("sub"),
+        OperationDefinition::Query(query) => {
+            format_operation_type(OperationType::Query(query), indent, out)
+        }
+        OperationDefinition::Mutation(query) => {
+            format_operation_type(OperationType::Mutation(query), indent, out)
+        }
+        OperationDefinition::SelectionSet(set) => format_selection_set(set, indent, out),
+        OperationDefinition::Subscription(sub) => {
+            format_operation_type(OperationType::Subscription(sub), indent, out)
+        }
     }
 }
 
-fn format_query_type(r#type: QueryType, indent: &mut Indentation, out: &mut Output) {
+fn format_operation_type(r#type: OperationType, indent: &mut Indentation, out: &mut Output) {
     todo_field!(r#type.variable_definitions());
     todo_field!(r#type.directives());
 
     if let Some(name) = r#type.name() {
-        out.push(&format!("{type_} {name}", type_ = r#type.to_string(), name = name), indent);
+        out.push(
+            &format!("{type_} {name}", type_ = r#type.to_string(), name = name),
+            indent,
+        );
     } else {
         out.push("query", indent);
     }
@@ -50,46 +59,52 @@ fn format_query_type(r#type: QueryType, indent: &mut Indentation, out: &mut Outp
     out.push_str("\n");
 }
 
-enum QueryType {
+enum OperationType {
     Query(Query),
     Mutation(Mutation),
+    Subscription(Subscription),
 }
 
-impl QueryType {
+impl OperationType {
     fn selection_set(&self) -> &SelectionSet {
         match self {
-            QueryType::Query(q) => &q.selection_set,
-            QueryType::Mutation(m) => &m.selection_set,
+            OperationType::Query(q) => &q.selection_set,
+            OperationType::Mutation(m) => &m.selection_set,
+            OperationType::Subscription(s) => &s.selection_set,
         }
     }
 
     fn name(&self) -> &Option<String> {
         match self {
-            QueryType::Query(q) => &q.name,
-            QueryType::Mutation(m) => &m.name,
+            OperationType::Query(x) => &x.name,
+            OperationType::Mutation(x) => &x.name,
+            OperationType::Subscription(x) => &x.name,
         }
     }
 
     fn directives(&self) -> &Vec<Directive> {
         match self {
-            QueryType::Query(q) => &q.directives,
-            QueryType::Mutation(m) => &m.directives,
+            OperationType::Query(x) => &x.directives,
+            OperationType::Mutation(x) => &x.directives,
+            OperationType::Subscription(x) => &x.directives,
         }
     }
 
     fn variable_definitions(&self) -> &Vec<VariableDefinition> {
         match self {
-            QueryType::Query(q) => &q.variable_definitions,
-            QueryType::Mutation(m) => &m.variable_definitions,
+            OperationType::Query(x) => &x.variable_definitions,
+            OperationType::Mutation(x) => &x.variable_definitions,
+            OperationType::Subscription(x) => &x.variable_definitions,
         }
     }
 }
 
-impl std::fmt::Display for QueryType {
+impl std::fmt::Display for OperationType {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            QueryType::Query(_) => write!(f, "query"),
-            QueryType::Mutation(_) => write!(f, "mutation"),
+            OperationType::Query(_) => write!(f, "query"),
+            OperationType::Mutation(_) => write!(f, "mutation"),
+            OperationType::Subscription(_) => write!(f, "subscription"),
         }
     }
 }
