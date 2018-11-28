@@ -7,7 +7,7 @@ macro_rules! todo {
 macro_rules! todo_field {
     ($value:expr) => {
         if !$value.is_empty() {
-            todo!(stringify!($value));
+            panic!("{:?}", stringify!($value));
         }
     };
 }

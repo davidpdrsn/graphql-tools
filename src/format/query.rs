@@ -44,17 +44,42 @@ fn format_operation(op: OperationDefinition, indent: &mut Indentation, out: &mut
 }
 
 fn format_operation_type(r#type: OperationType, indent: &mut Indentation, out: &mut Output) {
-    todo_field!(r#type.variable_definitions());
     todo_field!(r#type.directives());
 
+    let has_name;
     if let Some(name) = r#type.name() {
+        has_name = true;
         out.push(
             &format!("{type_} {name}", type_ = r#type.to_string(), name = name),
             indent,
         );
     } else {
-        out.push("query", indent);
+        has_name = false;
+        out.push(&format!("{type_}", type_ = r#type.to_string()), indent);
     }
+
+    if !r#type.variable_definitions().is_empty() {
+        if has_name {
+            out.push_str("(");
+        } else {
+            out.push_str(" (");
+        }
+        let args = r#type
+            .variable_definitions()
+            .iter()
+            .map(|var| {
+                let mut out = format!("${name}: {type_}", name = var.name, type_ = var.var_type);
+                if let Some(default) = &var.default_value {
+                    out.push_str(&format!(" = {}", default));
+                }
+                out
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        out.push_str(&format!("{}", args));
+        out.push_str(")");
+    }
+
     format_selection_set(r#type.selection_set().clone(), indent, out);
     out.push_str("\n");
 }
@@ -406,6 +431,117 @@ query UserProfile {
 query UserProfile {
   user(a: 1, h: 1, x: 1) {
     team
+  }
+}
+            "
+        .trim();
+
+        if actual != expected {
+            println!("Actual:\n\n{}\n", actual);
+            println!("Expected:\n\n{}", expected);
+            panic!("expected != actual");
+        }
+    }
+
+    #[test]
+    fn variables() {
+        let query = "
+query UserProfile ($username:String!
+) {
+  reddit {
+    user(username: $username) {
+      username
+      commentKarma
+      createdISO
+    }
+  }
+}
+        "
+        .trim();
+
+        let actual = format(query).unwrap();
+        let expected = "
+query UserProfile($username: String!) {
+  reddit {
+    user(username: $username) {
+      commentKarma
+      createdISO
+      username
+    }
+  }
+}
+            "
+        .trim();
+
+        if actual != expected {
+            println!("Actual:\n\n{}\n", actual);
+            println!("Expected:\n\n{}", expected);
+            panic!("expected != actual");
+        }
+    }
+
+    #[test]
+    fn variables_with_default_args() {
+        let query = "
+query UserProfile ($username:String! = \"123\"
+) {
+  reddit {
+    user(username: $username) {
+      username
+      commentKarma
+      createdISO
+    }
+  }
+}
+        "
+        .trim();
+
+        let actual = format(query).unwrap();
+        let expected = "
+query UserProfile($username: String! = \"123\") {
+  reddit {
+    user(username: $username) {
+      commentKarma
+      createdISO
+      username
+    }
+  }
+}
+            "
+        .trim();
+
+        if actual != expected {
+            println!("Actual:\n\n{}\n", actual);
+            println!("Expected:\n\n{}", expected);
+            panic!("expected != actual");
+        }
+    }
+
+    #[test]
+    fn unnamed_query_with_variables() {
+        let query = "
+query   ($username:String!
+) {
+  reddit {
+    user(username: $username) {
+      username
+      commentKarma
+      createdISO
+    }
+  }
+}
+        "
+        .trim();
+
+        let actual = format(query).unwrap();
+        let expected = "
+query ($username: String!) {
+  reddit {
+    user(username: $username) {
+      commentKarma
+      createdISO
+      username
+    }
   }
 }
             "
