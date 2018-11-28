@@ -3,11 +3,3 @@ macro_rules! todo {
         panic!("TODO `{}` at {}:{}", $info, file!(), line!())
     };
 }
-
-macro_rules! todo_field {
-    ($value:expr) => {
-        if !$value.is_empty() {
-            panic!("{:?}", stringify!($value));
-        }
-    };
-}

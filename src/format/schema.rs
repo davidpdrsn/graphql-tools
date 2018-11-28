@@ -19,7 +19,7 @@ pub fn format(contents: &str) -> Result<String, Error> {
 fn format_def(def: Definition, indent: &mut Indentation, out: &mut Output) {
     match def {
         Definition::SchemaDefinition(schema_def) => {
-            todo_field!(schema_def.directives);
+            // TODO: directives
 
             out.push("schema {\n", indent);
             indent.increment();
@@ -38,9 +38,9 @@ fn format_def(def: Definition, indent: &mut Indentation, out: &mut Output) {
 
         Definition::TypeDefinition(type_def) => format_type(type_def, indent, out),
 
-        Definition::TypeExtension(_) => todo!("TypeExtension"),
+        Definition::TypeExtension(_) => unimplemented!("TypeExtension"),
 
-        Definition::DirectiveDefinition(_) => todo!("DirectiveDefinition"),
+        Definition::DirectiveDefinition(_) => unimplemented!("DirectiveDefinition"),
     }
 }
 
@@ -51,6 +51,7 @@ fn format_type(type_def: TypeDefinition, indent: &mut Indentation, out: &mut Out
             // TODO: directives
 
             out.push(&format!("type {name}", name = obj.name), indent);
+
             if !obj.implements_interfaces.is_empty() {
                 out.push_str(" implements ");
                 let interfaces = obj
@@ -61,16 +62,9 @@ fn format_type(type_def: TypeDefinition, indent: &mut Indentation, out: &mut Out
                     .join(" & ");
                 out.push_str(&interfaces);
             }
+
             out.push_str(" {\n");
-
-            indent.increment();
-            let mut fields = obj.fields;
-            fields.sort_unstable_by_key(|field| field.name.clone());
-            for field in fields {
-                format_field(field, indent, out);
-            }
-            indent.decrement();
-
+            format_fields(obj.fields, indent, out);
             out.push("}\n\n", indent);
         }
 
@@ -79,6 +73,7 @@ fn format_type(type_def: TypeDefinition, indent: &mut Indentation, out: &mut Out
             // TODO: directives
 
             out.push(&format!("enum {name} {{\n", name = enum_.name), indent);
+
             indent.increment();
             let mut values = enum_.values;
             values.sort_unstable_by_key(|field| field.name.clone());
@@ -97,10 +92,58 @@ fn format_type(type_def: TypeDefinition, indent: &mut Indentation, out: &mut Out
             out.push(&format!("scalar {name}\n\n", name = scalar.name), indent);
         }
 
-        TypeDefinition::Interface(_) => todo!("Interface"),
-        TypeDefinition::Union(_) => todo!("Union"),
-        TypeDefinition::InputObject(_) => todo!("InputObject"),
+        TypeDefinition::Interface(interface) => {
+            // TODO: description
+            // TODO: directives
+
+            out.push(
+                &format!("interface {name} {{\n", name = interface.name),
+                indent,
+            );
+            format_fields(interface.fields, indent, out);
+            out.push("}\n\n", indent);
+        }
+
+        TypeDefinition::InputObject(obj) => {
+            // TODO: description
+            // TODO: directives
+
+            out.push(&format!("input {name} {{\n", name = obj.name), indent);
+            format_input_values(obj.fields, indent, out);
+            out.push("}\n\n", indent);
+        }
+
+        TypeDefinition::Union(union) => {
+            // TODO: description
+            // TODO: directives
+
+            out.push(&format!("union {name} = ", name = union.name), indent);
+
+            let mut types = union.types;
+            types.sort_unstable_by_key(|type_| type_.clone());
+            let types = types
+                .iter()
+                .map(|type_| type_.to_string())
+                .collect::<Vec<_>>()
+                .join(" | ");
+
+            out.push_str(types);
+            out.push_str("\n\n");
+        }
     }
+}
+
+fn format_fields(fields: Vec<Field>, indent: &mut Indentation, out: &mut Output) {
+    indent.increment();
+
+    let mut fields = fields.clone();
+    fields.sort_unstable_by_key(|field| field.name.clone());
+
+    for field in fields {
+        format_field(field, indent, out);
+    }
+
+    indent.decrement();
 }
 
 fn format_field(field: Field, indent: &mut Indentation, out: &mut Output) {
@@ -114,6 +157,34 @@ fn format_field(field: Field, indent: &mut Indentation, out: &mut Output) {
             "{name}: {type_}\n",
             name = field.name,
             type_ = field.field_type
+        ),
+        indent,
+    );
+}
+
+fn format_input_values(values: Vec<InputValue>, indent: &mut Indentation, out: &mut Output) {
+    indent.increment();
+
+    let mut values = values.clone();
+    values.sort_unstable_by_key(|field| field.name.clone());
+
+    for value in values {
+        format_input_value(value, indent, out);
+    }
+
+    indent.decrement();
+}
+
+fn format_input_value(value: InputValue, indent: &mut Indentation, out: &mut Output) {
+    // TODO: description
+    // TODO: default value
+    // TODO: directives
+
+    out.push(
+        &format!(
+            "{name}: {type_}\n",
+            name = value.name,
+            type_ = value.value_type
         ),
         indent,
     );
@@ -170,7 +241,7 @@ type User {
     }
 
     #[test]
-    fn test_interfaces() {
+    fn test_implements_interfaces() {
         format_test(
             format,
             "
@@ -217,6 +288,38 @@ enum Number {
             ",
             "
 scalar DateTime
+            ",
+        );
+    }
+
+    #[test]
+    fn test_define_interface() {
+        format_test(
+            format,
+            "
+interface Character { id: ID! appearsIn: [Episode]! friends: [Character] name: String! }
+            ",
+            "
+interface Character {
+  appearsIn: [Episode]!
+  friends: [Character]
+  id: ID!
+  name: String!
+}
+            ",
+        );
+    }
+
+    #[test]
+    fn test_union() {
+        format_test(
+            format,
+            "
+union SearchResult
+    = Z | Human | Droid | Starship
+            ",
+            "
+union SearchResult = Droid | Human | Starship | Z
             ",
         );
     }

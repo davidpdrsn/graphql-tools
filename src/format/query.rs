@@ -53,7 +53,7 @@ fn format_fragment(frag: FragmentDefinition, indent: &mut Indentation, out: &mut
 }
 
 fn format_operation_type(r#type: OperationType, indent: &mut Indentation, out: &mut Output) {
-    todo_field!(r#type.directives());
+    // TODO: directives
 
     let has_name;
     if let Some(name) = r#type.name() {
@@ -157,7 +157,7 @@ fn format_selection_set(set: SelectionSet, indent: &mut Indentation, out: &mut O
         match selection {
             Selection::Field(field) => format_field(field, indent, out),
             Selection::FragmentSpread(frag_spread) => {
-                todo_field!(frag_spread.directives);
+                // TODO: directives
                 out.push(&format!("...{}\n", frag_spread.fragment_name), indent);
             }
             Selection::InlineFragment(inline_frag) => {
@@ -190,7 +190,7 @@ fn selection_set_sort_key(sel: &Selection) -> (usize, String) {
 }
 
 fn format_inline_fragment(inline_frag: InlineFragment, indent: &mut Indentation, out: &mut Output) {
-    todo_field!(inline_frag.directives);
+    // TODO: directives
 
     out.push("...", indent);
     if let Some(TypeCondition::On(type_condition)) = inline_frag.type_condition {
@@ -200,7 +200,7 @@ fn format_inline_fragment(inline_frag: InlineFragment, indent: &mut Indentation,
 }
 
 fn format_field(field: Field, indent: &mut Indentation, out: &mut Output) {
-    todo_field!(field.directives);
+    // TODO: directives
 
     if let Some(alias) = field.alias {
         out.push(
@@ -247,8 +247,8 @@ fn format_field(field: Field, indent: &mut Indentation, out: &mut Output) {
 
 #[cfg(test)]
 mod test {
-    use crate::format::format_test;
     use super::*;
+    use crate::format::format_test;
 
     #[test]
     fn test_basic() {
