@@ -7,6 +7,7 @@ const INDENT_SIZE: usize = 2;
 pub mod query;
 pub mod schema;
 
+#[derive(Clone)]
 pub struct Indentation {
     size: usize,
     count: usize,

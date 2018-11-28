@@ -2,6 +2,9 @@ use super::{map_join, Indentation, Output, INDENT_SIZE, MAX_LINE_LENGTH};
 use failure::{bail, Error};
 use graphql_parser::parse_schema;
 use graphql_parser::schema::*;
+use itertools::{Itertools, Position};
+
+// TODO: Formatting arguments on field
 
 pub fn format(contents: &str) -> Result<String, Error> {
     let ast = parse_schema(contents)?;
@@ -44,12 +47,18 @@ fn format_def(def: Definition, indent: &mut Indentation, out: &mut Output) {
     }
 }
 
+fn push_desc(desc: Option<String>, indent: &mut Indentation, out: &mut Output) {
+    if let Some(desc) = desc {
+        out.push(&format!("\"{}\"\n", desc), indent);
+    }
+}
+
 fn format_type(type_def: TypeDefinition, indent: &mut Indentation, out: &mut Output) {
     match type_def {
         TypeDefinition::Object(obj) => {
-            // TODO: description
             // TODO: directives
 
+            push_desc(obj.description, indent, out);
             out.push(&format!("type {name}", name = obj.name), indent);
 
             if !obj.implements_interfaces.is_empty() {
@@ -63,9 +72,9 @@ fn format_type(type_def: TypeDefinition, indent: &mut Indentation, out: &mut Out
         }
 
         TypeDefinition::Enum(enum_) => {
-            // TODO: description
             // TODO: directives
 
+            push_desc(enum_.description, indent, out);
             out.push(&format!("enum {name} {{\n", name = enum_.name), indent);
 
             indent.increment();
@@ -80,16 +89,16 @@ fn format_type(type_def: TypeDefinition, indent: &mut Indentation, out: &mut Out
         }
 
         TypeDefinition::Scalar(scalar) => {
-            // TODO: description
             // TODO: directives
 
+            push_desc(scalar.description, indent, out);
             out.push(&format!("scalar {name}\n\n", name = scalar.name), indent);
         }
 
         TypeDefinition::Interface(interface) => {
-            // TODO: description
             // TODO: directives
 
+            push_desc(interface.description, indent, out);
             out.push(
                 &format!("interface {name} {{\n", name = interface.name),
                 indent,
@@ -99,18 +108,18 @@ fn format_type(type_def: TypeDefinition, indent: &mut Indentation, out: &mut Out
         }
 
         TypeDefinition::InputObject(obj) => {
-            // TODO: description
             // TODO: directives
 
+            push_desc(obj.description, indent, out);
             out.push(&format!("input {name} {{\n", name = obj.name), indent);
             format_input_values(obj.fields, indent, out);
             out.push("}\n\n", indent);
         }
 
         TypeDefinition::Union(union) => {
-            // TODO: description
             // TODO: directives
 
+            push_desc(union.description, indent, out);
             out.push(&format!("union {name} = ", name = union.name), indent);
 
             let mut types = union.types;
@@ -135,19 +144,45 @@ fn format_fields(fields: Vec<Field>, indent: &mut Indentation, out: &mut Output)
 }
 
 fn format_field(field: Field, indent: &mut Indentation, out: &mut Output) {
-    // TODO: description
-    // TODO: name
     // TODO: arguments
     // TODO: directives
 
-    out.push(
-        &format!(
-            "{name}: {type_}\n",
-            name = field.name,
-            type_ = field.field_type
-        ),
-        indent,
-    );
+    push_desc(field.description, indent, out);
+    out.push(&field.name, indent);
+
+    if !field.arguments.is_empty() {
+        out.push_str("(");
+        let current_line_length = out.current_line_length();
+
+        let mut args = field
+            .arguments
+            .into_iter()
+            .map(|input_value| {
+                let mut out = Output::new();
+                let mut indent = Indentation::new(0);
+                format_input_value(input_value, &mut indent, &mut out);
+                out.trim().to_string()
+            })
+            .collect::<Vec<_>>();
+        args.sort_unstable();
+        let args_joined = args.join(", ") + ")";
+
+        let line_length_with_args = current_line_length + args_joined.len();
+
+        if line_length_with_args > MAX_LINE_LENGTH {
+            indent.increment();
+            out.push_str("\n");
+            args.iter().for_each(|arg| {
+                out.push(&format!("{},\n", arg), indent);
+            });
+            indent.decrement();
+            out.push(")", indent);
+        } else {
+            out.push_str(&args_joined);
+        }
+    }
+
+    out.push_str(&format!(": {type_}\n", type_ = field.field_type));
 }
 
 fn format_input_values(values: Vec<InputValue>, indent: &mut Indentation, out: &mut Output) {
@@ -156,21 +191,45 @@ fn format_input_values(values: Vec<InputValue>, indent: &mut Indentation, out: &
     let mut values = values.clone();
     values.sort_unstable_by_key(|field| field.name.clone());
 
-    for value in values {
+    let has_docs = values.iter().any(|value| value.description.is_some());
+    let no_docs = values.iter().all(|value| value.description.is_none());
+    assert!(!(has_docs && no_docs));
+
+    for pos in values.into_iter().with_position() {
+        use itertools::Position::*;
+
+        let value = pos.clone().into_inner();
         format_input_value(value, indent, out);
+
+        let push_newline_because_docs = match pos {
+            First(_) | Middle(_) if has_docs => true,
+            Last(_) | Only(_) | _ => false,
+        };
+
+        if push_newline_because_docs {
+            out.push_str("\n\n");
+        } else if no_docs {
+            out.push_str("\n");
+        }
+
+        match pos {
+            Last(_) if !no_docs => out.push_str("\n"),
+            _ => {}
+        };
     }
 
     indent.decrement();
 }
 
 fn format_input_value(value: InputValue, indent: &mut Indentation, out: &mut Output) {
-    // TODO: description
     // TODO: default value
     // TODO: directives
 
+    push_desc(value.description.clone(), indent, out);
+
     out.push(
         &format!(
-            "{name}: {type_}\n",
+            "{name}: {type_}",
             name = value.name,
             type_ = value.value_type
         ),
@@ -311,4 +370,96 @@ union SearchResult = Droid | Human | Starship | Z
             ",
         );
     }
+
+    #[test]
+    fn test_descriptions() {
+        format_test(
+            format,
+            "
+\"The user type\"
+type User { \"the id\" id: Int! \"the name\" name: String }
+schema { query:Query mutation:Mutation }
+            ",
+            "
+\"The user type\"
+type User {
+  \"the id\"
+  id: Int!
+  \"the name\"
+  name: String
+}
+
+schema {
+  mutation: Mutation
+  query: Query
+}
+            ",
+        );
+    }
+
+    #[test]
+    fn test_field_args() {
+        format_test(
+            format,
+            "
+type Query { user(slug: String): User }
+            ",
+            "
+type Query {
+  user(slug: String): User
+}
+            ",
+        );
+    }
+
+    #[test]
+    fn test_input_value() {
+        format_test(
+            format,
+            "
+            \"Creating a user\"
+input UserInput{
+  \"A field\"
+  id: Int
+  \"Another field\"
+  slug: String!
+}
+
+input UserInput2{
+  \"A field\"
+  id: Int
+  slug: String!
+}
+
+input WithoutDocs{
+  id: Int
+  slug: String!
+}
+            ",
+            "
+\"Creating a user\"
+input UserInput {
+  \"A field\"
+  id: Int
+
+  \"Another field\"
+  slug: String!
+}
+
+input UserInput2 {
+  \"A field\"
+  id: Int
+
+  slug: String!
+}
+
+input WithoutDocs {
+  id: Int
+  slug: String!
+}
+            ",
+        );
+    }
+
+    // TODO: args with docs
 }
