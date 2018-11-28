@@ -2,6 +2,7 @@ use failure::Error;
 use graphql_parser::parse_query;
 use lazy_static::lazy_static;
 use regex::Regex;
+use reqwest::StatusCode;
 use serde_json::Value;
 use std::collections::HashMap;
 use structopt::StructOpt;
@@ -15,27 +16,19 @@ mod format;
 #[derive(StructOpt, Debug)]
 #[structopt(name = "gqltools", about = "GraphQL tools")]
 enum Opt {
-    /// Validate a query against a schema
-    #[structopt(name = "query")]
-    Query {
+    /// Validate a query by running it and seeing if it works
+    #[structopt(name = "validate")]
+    Validate {
         /// The file to validate
         file: String,
-        /// The file to validate
-        #[structopt(name = "schema", short = "s")]
-        schema: String,
+        /// The host to send the query to
+        #[structopt(name = "host", short = "h")]
+        host: String,
     },
     /// Validate a schema for internal consistency
     #[structopt(name = "schema")]
     Schema {
         /// The file to validate
-        file: String,
-    },
-    /// Validate a query or a schema
-    #[structopt(name = "validate")]
-    Validate {
-        /// The file to validate. The fil will only be validated for syntax errors.
-        /// Use other subcommands for more specific validations.
-        /// It'll be inferred from the contents if its a query or a schema.
         file: String,
     },
     /// Format a query or a schema
@@ -66,9 +59,8 @@ fn main() {
     let opt = Opt::from_args();
 
     let res = match opt {
-        Opt::Query { file, schema } => validate_query(file, schema),
+        Opt::Validate { file, host } => validate_query(file, host),
         Opt::Schema { file } => validate_schema(file),
-        Opt::Validate { file } => validate(file),
         Opt::Format { file, write, check } => format(file, write, check),
         Opt::Run { file, host } => run(file, host),
     };
@@ -84,15 +76,38 @@ fn main() {
 
 type Output = Result<(), Error>;
 
-fn validate_query(query_path: String, schema_path: String) -> Output {
-    unimplemented!()
+fn validate_query(query_path: String, host: String) -> Output {
+    use glob::glob;
+
+    let mut failed_files = vec![];
+
+    glob(&query_path)?
+        .into_iter()
+        .filter_map(|file| file.ok())
+        .map(|file| file.to_string_lossy().into_owned())
+        .filter(|file| !is_schema(&read_file(file).expect("unreadable file from glob")))
+        .for_each(|file| {
+            let (_, status) =
+                run_2(file.to_string(), host.clone()).expect("request failed to execute");
+            if status.is_success() {
+                println!("✅ {}", file);
+            } else {
+                println!("⛔️ {}", file);
+                failed_files.push(file);
+            }
+        });
+
+    if !failed_files.is_empty() {
+        println!("\nFailures:");
+        for file in failed_files {
+            println!("{}", file);
+        }
+    }
+
+    Ok(())
 }
 
-fn validate_schema(schema_path: String) -> Output {
-    unimplemented!()
-}
-
-fn validate(file_path: String) -> Output {
+fn validate_schema(_: String) -> Output {
     unimplemented!()
 }
 
@@ -158,6 +173,20 @@ fn print_diff(formatted: &str, contents: &str) {
 }
 
 fn run(file: String, host: String) -> Result<(), Error> {
+    let (json, status) = run_2(file, host)?;
+    let pretty = serde_json::to_string_pretty(&json)?;
+
+    println!("{}", status);
+    println!("{}", pretty);
+
+    if !status.is_success() {
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+fn run_2(file: String, host: String) -> Result<(Value, StatusCode), Error> {
     let mut map = HashMap::new();
 
     let contents = read_file(&file)?;
@@ -168,9 +197,8 @@ fn run(file: String, host: String) -> Result<(), Error> {
 
     let client = reqwest::Client::new();
     let mut res = client.post(&host).json(&map).send()?;
-    let json: Value = res.json()?;
-    let pretty = serde_json::to_string_pretty(&json)?;
-    println!("{}", pretty);
 
-    Ok(())
+    let status = res.status();
+    let json: Value = res.json()?;
+    Ok((json, status))
 }
