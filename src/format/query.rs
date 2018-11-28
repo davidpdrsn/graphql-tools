@@ -174,19 +174,19 @@ fn format_selection_set(set: SelectionSet, indent: &mut Indentation, out: &mut O
 
 fn selection_set_sort_key(sel: &Selection) -> (usize, String) {
     match sel {
-        Selection::FragmentSpread(frag_spread) => (1, frag_spread.fragment_name.clone()),
+        Selection::FragmentSpread(frag_spread) => (3, frag_spread.fragment_name.clone()),
         Selection::InlineFragment(inline_frag) => {
             if let Some(TypeCondition::On(ref name)) = inline_frag.type_condition {
-                (2, name.clone())
+                (4, name.clone())
             } else {
-                (2, "zzzzz".to_string())
+                (5, String::new())
             }
         }
         Selection::Field(field) => {
             if field.selection_set.items.is_empty() {
-                (3, field.name.clone())
+                (1, field.name.clone())
             } else {
-                (4, field.name.clone())
+                (2, field.name.clone())
             }
         }
     }
