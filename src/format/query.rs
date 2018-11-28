@@ -24,7 +24,7 @@ fn format_doc(doc: Document, indent: &mut Indentation, out: &mut Output) {
 fn format_def(def: Definition, indent: &mut Indentation, out: &mut Output) {
     match def {
         Definition::Operation(operation) => format_operation(operation, indent, out),
-        Definition::Fragment(fragment) => todo!("Fragment"),
+        Definition::Fragment(fragment) => format_fragment(fragment, indent, out),
     }
 }
 
@@ -41,6 +41,18 @@ fn format_operation(op: OperationDefinition, indent: &mut Indentation, out: &mut
             format_operation_type(OperationType::Subscription(sub), indent, out)
         }
     }
+}
+
+fn format_fragment(frag: FragmentDefinition, indent: &mut Indentation, out: &mut Output) {
+    out.push(
+        &format!(
+            "fragment {name} {type_}",
+            name = frag.name,
+            type_ = frag.type_condition
+        ),
+        indent,
+    );
+    format_selection_set(frag.selection_set, indent, out);
 }
 
 fn format_operation_type(r#type: OperationType, indent: &mut Indentation, out: &mut Output) {
@@ -90,13 +102,19 @@ enum OperationType {
     Subscription(Subscription),
 }
 
+macro_rules! get_operation_type_field {
+    ($self:ident, $field:ident) => {
+        match $self {
+            OperationType::Query(x) => &x.$field,
+            OperationType::Mutation(x) => &x.$field,
+            OperationType::Subscription(x) => &x.$field,
+        }
+    };
+}
+
 impl OperationType {
     fn selection_set(&self) -> &SelectionSet {
-        match self {
-            OperationType::Query(q) => &q.selection_set,
-            OperationType::Mutation(m) => &m.selection_set,
-            OperationType::Subscription(s) => &s.selection_set,
-        }
+        get_operation_type_field!(self, selection_set)
     }
 
     fn name(&self) -> &Option<String> {
@@ -108,19 +126,11 @@ impl OperationType {
     }
 
     fn directives(&self) -> &Vec<Directive> {
-        match self {
-            OperationType::Query(x) => &x.directives,
-            OperationType::Mutation(x) => &x.directives,
-            OperationType::Subscription(x) => &x.directives,
-        }
+        get_operation_type_field!(self, directives)
     }
 
     fn variable_definitions(&self) -> &Vec<VariableDefinition> {
-        match self {
-            OperationType::Query(x) => &x.variable_definitions,
-            OperationType::Mutation(x) => &x.variable_definitions,
-            OperationType::Subscription(x) => &x.variable_definitions,
-        }
+        get_operation_type_field!(self, variable_definitions)
     }
 }
 
@@ -153,7 +163,9 @@ fn format_selection_set(set: SelectionSet, indent: &mut Indentation, out: &mut O
                 todo_field!(frag_spread.directives);
                 out.push(&format!("...{}\n", frag_spread.fragment_name), indent);
             }
-            Selection::InlineFragment(inline_frag) => todo!("inline_frag"),
+            Selection::InlineFragment(inline_frag) => {
+                format_inline_fragment(inline_frag, indent, out)
+            }
         }
     }
     indent.decrement();
@@ -178,6 +190,16 @@ fn selection_set_sort_key(sel: &Selection) -> (usize, String) {
             }
         }
     }
+}
+
+fn format_inline_fragment(inline_frag: InlineFragment, indent: &mut Indentation, out: &mut Output) {
+    todo_field!(inline_frag.directives);
+
+    out.push("...", indent);
+    if let Some(TypeCondition::On(type_condition)) = inline_frag.type_condition {
+        out.push_str(&format!(" on {}", type_condition));
+    }
+    format_selection_set(inline_frag.selection_set, indent, out);
 }
 
 fn format_field(field: Field, indent: &mut Indentation, out: &mut Output) {
@@ -541,6 +563,92 @@ query ($username: String!) {
       commentKarma
       createdISO
       username
+    }
+  }
+}
+            "
+        .trim();
+
+        if actual != expected {
+            println!("Actual:\n\n{}\n", actual);
+            println!("Expected:\n\n{}", expected);
+            panic!("expected != actual");
+        }
+    }
+
+    #[test]
+    fn inline_fragment() {
+        let query = "
+query {
+  a(query:\"hi\") {
+    ... on User {
+      id
+      name
+    }
+  }
+  b(query: \"hi\") {
+    ... {
+      id
+      name
+    }
+  }
+}
+        "
+        .trim();
+
+        let actual = format(query).unwrap();
+        let expected = "
+query {
+  a(query: \"hi\") {
+    ... on User {
+      id
+      name
+    }
+  }
+  b(query: \"hi\") {
+    ... {
+      id
+      name
+    }
+  }
+}
+            "
+        .trim();
+
+        if actual != expected {
+            println!("Actual:\n\n{}\n", actual);
+            println!("Expected:\n\n{}", expected);
+            panic!("expected != actual");
+        }
+    }
+
+    #[test]
+    fn fragment_definition() {
+        let query = "
+fragment comparisonFields on Character {
+name
+friendsConnection(first: $first) {
+  totalCount
+  edges {
+    node {
+      name
+    }
+  }
+}
+}
+        "
+        .trim();
+
+        let actual = format(query).unwrap();
+        let expected = "
+fragment comparisonFields on Character {
+  name
+  friendsConnection(first: $first) {
+    totalCount
+    edges {
+      node {
+        name
+      }
     }
   }
 }
