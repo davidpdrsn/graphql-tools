@@ -1,6 +1,9 @@
-use failure::{bail, Error};
+use failure::Error;
+use graphql_parser::parse_query;
 use lazy_static::lazy_static;
 use regex::Regex;
+use serde_json::Value;
+use std::collections::HashMap;
 use structopt::StructOpt;
 
 #[macro_use]
@@ -48,6 +51,15 @@ enum Opt {
         #[structopt(long = "check")]
         check: bool,
     },
+    /// Run a query against a GraphQL web service
+    #[structopt(name = "run")]
+    Run {
+        /// The file containing the query to run.
+        file: String,
+        /// The URL to the GraphQL web service
+        #[structopt(short = "h", long = "host")]
+        host: String,
+    },
 }
 
 fn main() {
@@ -58,6 +70,7 @@ fn main() {
         Opt::Schema { file } => validate_schema(file),
         Opt::Validate { file } => validate(file),
         Opt::Format { file, write, check } => format(file, write, check),
+        Opt::Run { file, host } => run(file, host),
     };
 
     match res {
@@ -142,4 +155,22 @@ fn print_diff(formatted: &str, contents: &str) {
     use self::diff;
     let diff = diff::make_diff(contents, formatted, formatted.len());
     diff::print_diff(diff);
+}
+
+fn run(file: String, host: String) -> Result<(), Error> {
+    let mut map = HashMap::new();
+
+    let contents = read_file(&file)?;
+    parse_query(&contents)?;
+
+    map.insert("query", contents);
+    map.insert("variables", "{}".to_string());
+
+    let client = reqwest::Client::new();
+    let mut res = client.post(&host).json(&map).send()?;
+    let json: Value = res.json()?;
+    let pretty = serde_json::to_string_pretty(&json)?;
+    println!("{}", pretty);
+
+    Ok(())
 }
