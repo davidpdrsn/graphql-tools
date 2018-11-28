@@ -90,6 +90,7 @@ fn format(file_path: String, write: bool, check: bool) -> Output {
     }
 
     let contents = read_file(&file_path)?;
+    let contents = contents.trim();
 
     let formatted = if is_schema(&contents) {
         format::schema::format(&contents)?
@@ -100,7 +101,7 @@ fn format(file_path: String, write: bool, check: bool) -> Output {
     if write {
         write_file(file_path, formatted)?;
     } else if check {
-        if formatted.trim() != contents.trim() {
+        if formatted != contents {
             print_diff(&formatted, &contents);
             std::process::exit(1);
         }

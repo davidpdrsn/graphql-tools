@@ -1,9 +1,6 @@
-use super::{Indentation, Output};
+use super::{Indentation, Output, INDENT_SIZE, MAX_LINE_LENGTH};
 use failure::{bail, Error};
 use graphql_parser::{parse_query, query::*};
-
-const MAX_LINE_LENGTH: usize = 80;
-const INDENT_SIZE: usize = 2;
 
 pub fn format(contents: &str) -> Result<String, Error> {
     let ast = parse_query(contents)?;
@@ -250,19 +247,18 @@ fn format_field(field: Field, indent: &mut Indentation, out: &mut Output) {
 
 #[cfg(test)]
 mod test {
-    #[allow(unused_imports)]
+    use crate::format::format_test;
     use super::*;
 
     #[test]
     fn test_basic() {
-        let query = "
+        format_test(
+            format,
+            "
 query One { firstName }
 query Two { firstName lastName }
-        "
-        .trim();
-
-        let actual = format(query).unwrap();
-        let expected = "
+            ",
+            "
 query One {
   firstName
 }
@@ -271,14 +267,8 @@ query Two {
   firstName
   lastName
 }
-            "
-        .trim();
-
-        if actual != expected {
-            println!("Actual:\n{}", actual);
-            println!("Expected:\n{}", expected);
-            panic!("expected != actual");
-        }
+            ",
+        );
     }
 
     #[test]

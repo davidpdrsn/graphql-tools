@@ -1,4 +1,8 @@
+use failure::Error;
 use std::fmt;
+
+const MAX_LINE_LENGTH: usize = 80;
+const INDENT_SIZE: usize = 2;
 
 pub mod query;
 pub mod schema;
@@ -44,8 +48,7 @@ impl Output {
     }
 
     fn push_str<T: AsRef<str>>(&mut self, s: T) {
-        self.buf
-            .push_str(s.as_ref());
+        self.buf.push_str(s.as_ref());
     }
 
     fn current_line(&self) -> &str {
@@ -64,6 +67,23 @@ impl Output {
 impl fmt::Display for Output {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.buf)
+    }
+}
+
+#[cfg(test)]
+pub fn format_test<F>(formatter: F, query: &str, expected: &str)
+where
+    F: Fn(&str) -> Result<String, Error>,
+{
+    let query = query.trim();
+    let actual = formatter(query).unwrap();
+
+    let expected = expected.trim();
+
+    if actual != expected {
+        println!("--- Actual:\n{}", actual);
+        println!("--- Expected:\n{}", expected);
+        panic!("expected != actual");
     }
 }
 
