@@ -7,7 +7,7 @@ const INDENT_SIZE: usize = 2;
 pub mod query;
 pub mod schema;
 
-struct Indentation {
+pub struct Indentation {
     size: usize,
     count: usize,
 }
@@ -34,7 +34,7 @@ impl Indentation {
     }
 }
 
-struct Output {
+pub struct Output {
     buf: String,
 }
 
@@ -68,6 +68,24 @@ impl fmt::Display for Output {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.buf)
     }
+}
+
+pub fn map_join<I, T, K, F>(
+    iter: I,
+    mapper: F,
+    sep: &str,
+    out: &mut Output,
+) where
+    I: Iterator<Item = T>,
+    F: Fn(T) -> K,
+    T: std::fmt::Display,
+    K: std::fmt::Display,
+{
+    let joined = iter
+        .map(|thing| format!("{}", mapper(thing)))
+        .collect::<Vec<_>>()
+        .join(sep);
+    out.push_str(&joined);
 }
 
 #[cfg(test)]

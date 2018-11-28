@@ -1,4 +1,4 @@
-use super::{Indentation, Output, INDENT_SIZE, MAX_LINE_LENGTH};
+use super::{map_join, Indentation, Output, INDENT_SIZE, MAX_LINE_LENGTH};
 use failure::{bail, Error};
 use graphql_parser::parse_schema;
 use graphql_parser::schema::*;
@@ -54,13 +54,7 @@ fn format_type(type_def: TypeDefinition, indent: &mut Indentation, out: &mut Out
 
             if !obj.implements_interfaces.is_empty() {
                 out.push_str(" implements ");
-                let interfaces = obj
-                    .implements_interfaces
-                    .iter()
-                    .map(|name| format!("{}", name))
-                    .collect::<Vec<_>>()
-                    .join(" & ");
-                out.push_str(&interfaces);
+                map_join(obj.implements_interfaces.iter(), |name| name, " & ", out);
             }
 
             out.push_str(" {\n");
@@ -121,13 +115,7 @@ fn format_type(type_def: TypeDefinition, indent: &mut Indentation, out: &mut Out
 
             let mut types = union.types;
             types.sort_unstable_by_key(|type_| type_.clone());
-            let types = types
-                .iter()
-                .map(|type_| type_.to_string())
-                .collect::<Vec<_>>()
-                .join(" | ");
-
-            out.push_str(types);
+            map_join(types.iter(), |type_| type_, " | ", out);
             out.push_str("\n\n");
         }
     }

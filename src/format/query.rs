@@ -1,4 +1,4 @@
-use super::{Indentation, Output, INDENT_SIZE, MAX_LINE_LENGTH};
+use super::{map_join, Indentation, Output, INDENT_SIZE, MAX_LINE_LENGTH};
 use failure::{bail, Error};
 use graphql_parser::{parse_query, query::*};
 
@@ -73,19 +73,20 @@ fn format_operation_type(r#type: OperationType, indent: &mut Indentation, out: &
         } else {
             out.push_str(" (");
         }
-        let args = r#type
-            .variable_definitions()
-            .iter()
-            .map(|var| {
+
+        map_join(
+            r#type.variable_definitions().iter(),
+            |var| {
                 let mut out = format!("${name}: {type_}", name = var.name, type_ = var.var_type);
                 if let Some(default) = &var.default_value {
                     out.push_str(&format!(" = {}", default));
                 }
                 out
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
-        out.push_str(&format!("{}", args));
+            },
+            ", ",
+            out,
+        );
+
         out.push_str(")");
     }
 
