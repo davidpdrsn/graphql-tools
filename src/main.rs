@@ -35,11 +35,14 @@ enum Opt {
     /// Validate a query by running it and seeing if it works
     #[structopt(name = "validate")]
     Validate {
-        /// The file to validate
-        file: String,
-        /// The host to send the query to
-        #[structopt(name = "host", short = "h")]
-        host: String,
+        /// File path to the query to validate
+        ///
+        /// Supports glob patterns such as "queries/**/*.graphql"
+        #[structopt(short = "q", long = "query")]
+        query: String,
+        /// File path to the schema
+        #[structopt(short = "s", long = "schema")]
+        schema: String,
     },
     /// Validate a schema for internal consistency
     #[structopt(name = "schema")]
@@ -87,7 +90,7 @@ fn main() {
     let opt = Opt::from_args();
 
     let res = match opt {
-        Opt::Validate { file, host } => validate_query(file, host),
+        Opt::Validate { query, schema } => validate_query(query, schema),
         Opt::Schema { file } => validate_schema(file),
         Opt::Format { file, write, check } => format(file, write, check),
         Opt::Run {
@@ -109,34 +112,57 @@ fn main() {
 
 type Output = Result<(), Error>;
 
-fn validate_query(query_path: String, host: String) -> Output {
+fn validate_query(query_path: String, schema_path: String) -> Output {
     use glob::glob;
+    use colored::*;
 
-    let mut failed_files = vec![];
+    let mut all_good = true;
+    let mut lines = Vec::new();
 
     glob(&query_path)?
         .filter_map(|file| file.ok())
         .map(|file| file.to_string_lossy().into_owned())
         .filter(|file| !is_schema(&read_file(file).expect("unreadable file from glob")))
         .for_each(|file| {
-            let (_, status) = run_2(file.to_string(), host.clone(), vec![], vec![])
-                .expect("request failed to execute");
-            if status.is_success() {
-                println!("✅ {}", file);
-            } else {
-                println!("⛔️ {}", file);
-                failed_files.push(file);
+            match perform_validation(&file, &schema_path) {
+                Ok(()) => {
+                    lines.push(format!("{} {}", "OK:".green(), file));
+                },
+                Err(err) => {
+                    lines.push(format!("{} {}", "Error:".red(), file));
+                    lines.push(format!("{} {}", "Error message:".red(), err.to_string()));
+                    all_good = false;
+                }
             }
         });
 
-    if !failed_files.is_empty() {
-        println!("\nFailures:");
-        for file in failed_files {
-            println!("{}", file);
-        }
+    if !lines.is_empty() {
+        println!("{}", lines.join("\n"));
+    }
+
+    if !all_good {
+        std::process::exit(1);
     }
 
     Ok(())
+}
+
+fn perform_validation(query_path: &str, schema_path: &str) -> Result<(), Error> {
+    use graphql_client_codegen::{generate_module_token_stream, GraphQLClientDeriveOptions};
+    use std::path::{Path, PathBuf};
+    use syn::Visibility;
+
+    let query_path = PathBuf::from(query_path);
+    let schema_path = Path::new(schema_path);
+    let options = GraphQLClientDeriveOptions {
+        operation_name: Some("OperationName".into()),
+        struct_name: Some("StructName".into()),
+        module_name: Some("module_name".into()),
+        additional_derives: None,
+        deprecation_strategy: None,
+        module_visibility: Visibility::Inherited,
+    };
+    generate_module_token_stream(query_path, schema_path, Some(options)).map(|_| ())
 }
 
 fn validate_schema(_: String) -> Output {
