@@ -2,7 +2,10 @@ use failure::Error;
 use graphql_parser::parse_query;
 use lazy_static::lazy_static;
 use regex::Regex;
-use reqwest::StatusCode;
+use reqwest::{
+    header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE, USER_AGENT},
+    StatusCode,
+};
 use serde_json::Value;
 use std::collections::HashMap;
 use structopt::StructOpt;
@@ -12,6 +15,19 @@ mod macros;
 
 mod diff;
 mod format;
+
+macro_rules! unwrap_or_exit {
+    ( $e:expr, $msg:expr ) => {
+        match $e {
+            Ok(value) => value,
+            Err(err) => {
+                eprintln!($msg);
+                eprintln!("{:?}", err);
+                std::process::exit(1)
+            }
+        }
+    };
+}
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "gqltools", about = "GraphQL tools")]
@@ -52,6 +68,9 @@ enum Opt {
         /// The URL to the GraphQL web service
         #[structopt(short = "h", long = "host")]
         host: String,
+        /// Headers
+        #[structopt(short = "H", long = "header")]
+        headers: Vec<String>,
     },
 }
 
@@ -62,7 +81,11 @@ fn main() {
         Opt::Validate { file, host } => validate_query(file, host),
         Opt::Schema { file } => validate_schema(file),
         Opt::Format { file, write, check } => format(file, write, check),
-        Opt::Run { file, host } => run(file, host),
+        Opt::Run {
+            file,
+            host,
+            headers,
+        } => run(file, host, headers),
     };
 
     match res {
@@ -82,13 +105,12 @@ fn validate_query(query_path: String, host: String) -> Output {
     let mut failed_files = vec![];
 
     glob(&query_path)?
-        .into_iter()
         .filter_map(|file| file.ok())
         .map(|file| file.to_string_lossy().into_owned())
         .filter(|file| !is_schema(&read_file(file).expect("unreadable file from glob")))
         .for_each(|file| {
             let (_, status) =
-                run_2(file.to_string(), host.clone()).expect("request failed to execute");
+                run_2(file.to_string(), host.clone(), vec![]).expect("request failed to execute");
             if status.is_success() {
                 println!("✅ {}", file);
             } else {
@@ -172,8 +194,8 @@ fn print_diff(formatted: &str, contents: &str) {
     diff::print_diff(diff);
 }
 
-fn run(file: String, host: String) -> Result<(), Error> {
-    let (json, status) = run_2(file, host)?;
+fn run(file: String, host: String, headers: Vec<String>) -> Result<(), Error> {
+    let (json, status) = run_2(file, host, headers)?;
     let pretty = serde_json::to_string_pretty(&json)?;
 
     println!("{}", status);
@@ -186,7 +208,7 @@ fn run(file: String, host: String) -> Result<(), Error> {
     Ok(())
 }
 
-fn run_2(file: String, host: String) -> Result<(Value, StatusCode), Error> {
+fn run_2(file: String, host: String, headers: Vec<String>) -> Result<(Value, StatusCode), Error> {
     let mut map = HashMap::new();
 
     let contents = read_file(&file)?;
@@ -196,9 +218,45 @@ fn run_2(file: String, host: String) -> Result<(Value, StatusCode), Error> {
     map.insert("variables", "{}".to_string());
 
     let client = reqwest::Client::new();
-    let mut res = client.post(&host).json(&map).send()?;
+
+    let mut res = client
+        .post(&host)
+        .headers(parse_headers(headers))
+        .json(&map)
+        .send()?;
 
     let status = res.status();
-    let json: Value = res.json()?;
-    Ok((json, status))
+
+    if status == 200 {
+        let json: Value = res.json()?;
+        Ok((json, status))
+    } else {
+        let body = res.text()?;
+        eprintln!("Error! Response status was {}", status);
+        eprintln!("Body:");
+        eprintln!("{}", body);
+        std::process::exit(1);
+    }
+}
+
+fn parse_headers(headers: Vec<String>) -> HeaderMap {
+    let mut map = HeaderMap::new();
+
+    for input in headers {
+        let split = input.split(':').map(|part| part.trim()).collect::<Vec<_>>();
+        if split.len() != 2 {
+            eprintln!("Error parsing header");
+            std::process::exit(1);
+        }
+
+        let key = unwrap_or_exit!(
+            HeaderName::from_lowercase(split[0].to_lowercase().as_bytes()),
+            "Invalid header name"
+        );
+        let value = unwrap_or_exit!(HeaderValue::from_str(split[1]), "Invalid header value");
+
+        map.insert(key, value);
+    }
+
+    map
 }

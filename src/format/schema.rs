@@ -4,8 +4,6 @@ use graphql_parser::parse_schema;
 use graphql_parser::schema::*;
 use itertools::{Itertools, Position};
 
-// TODO: Formatting arguments on field
-
 pub fn format(contents: &str) -> Result<String, Error> {
     let ast = parse_schema(contents)?;
 
@@ -144,7 +142,6 @@ fn format_fields(fields: Vec<Field>, indent: &mut Indentation, out: &mut Output)
 }
 
 fn format_field(field: Field, indent: &mut Indentation, out: &mut Output) {
-    // TODO: arguments
     // TODO: directives
 
     push_desc(field.description, indent, out);
