@@ -6,7 +6,7 @@ use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE, USER_AGENT},
     StatusCode,
 };
-use serde_json::Value;
+use serde_json::{json, map::Map, Value};
 use std::collections::HashMap;
 use structopt::StructOpt;
 
@@ -71,6 +71,11 @@ enum Opt {
         /// Headers
         #[structopt(short = "H", long = "header")]
         headers: Vec<String>,
+        /// Variables
+        /// Should be string of the form
+        ///   -v "someVarName = 1" -v "someOtherVarName = \"foo\""
+        #[structopt(short = "v", long = "vars")]
+        vars: Vec<String>,
     },
 }
 
@@ -85,7 +90,8 @@ fn main() {
             file,
             host,
             headers,
-        } => run(file, host, headers),
+            vars,
+        } => run(file, host, headers, vars),
     };
 
     match res {
@@ -109,8 +115,8 @@ fn validate_query(query_path: String, host: String) -> Output {
         .map(|file| file.to_string_lossy().into_owned())
         .filter(|file| !is_schema(&read_file(file).expect("unreadable file from glob")))
         .for_each(|file| {
-            let (_, status) =
-                run_2(file.to_string(), host.clone(), vec![]).expect("request failed to execute");
+            let (_, status) = run_2(file.to_string(), host.clone(), vec![], vec![])
+                .expect("request failed to execute");
             if status.is_success() {
                 println!("✅ {}", file);
             } else {
@@ -194,9 +200,9 @@ fn print_diff(formatted: &str, contents: &str) {
     diff::print_diff(diff);
 }
 
-fn run(file: String, host: String, headers: Vec<String>) -> Result<(), Error> {
-    let (json, status) = run_2(file, host, headers)?;
-    let pretty = serde_json::to_string_pretty(&json)?;
+fn run(file: String, host: String, headers: Vec<String>, vars: Vec<String>) -> Result<(), Error> {
+    let (json, status) = run_2(file, host, headers, vars)?;
+    let pretty = colored_json::to_colored_json_auto(&json)?;
 
     println!("{}", status);
     println!("{}", pretty);
@@ -208,14 +214,19 @@ fn run(file: String, host: String, headers: Vec<String>) -> Result<(), Error> {
     Ok(())
 }
 
-fn run_2(file: String, host: String, headers: Vec<String>) -> Result<(Value, StatusCode), Error> {
-    let mut map = HashMap::new();
-
+fn run_2(
+    file: String,
+    host: String,
+    headers: Vec<String>,
+    vars: Vec<String>,
+) -> Result<(Value, StatusCode), Error> {
     let contents = read_file(&file)?;
     parse_query(&contents)?;
 
-    map.insert("query", contents);
-    map.insert("variables", "{}".to_string());
+    let mut map = Map::new();
+    map.insert("query".to_string(), json!(contents));
+    let vars = parse_variables(vars);
+    map.insert("variables".to_string(), vars);
 
     let client = reqwest::Client::new();
 
@@ -231,10 +242,20 @@ fn run_2(file: String, host: String, headers: Vec<String>) -> Result<(Value, Sta
         let json: Value = res.json()?;
         Ok((json, status))
     } else {
-        let body = res.text()?;
         eprintln!("Error! Response status was {}", status);
+
+        let body = res.text()?;
         eprintln!("Body:");
-        eprintln!("{}", body);
+        let json = serde_json::from_str::<Value>(&body);
+        match json {
+            Ok(json) => {
+                eprintln!("{}", colored_json::to_colored_json_auto(&json).unwrap());
+            }
+            Err(_) => {
+                eprintln!("{}", body);
+            }
+        }
+
         std::process::exit(1);
     }
 }
@@ -259,4 +280,23 @@ fn parse_headers(headers: Vec<String>) -> HeaderMap {
     }
 
     map
+}
+
+fn parse_variables(vars: Vec<String>) -> Value {
+    let mut acc = Map::new();
+
+    for var in vars {
+        let split = var.split(" = ").map(|part| part.trim()).collect::<Vec<_>>();
+        if split.len() != 2 {
+            eprintln!("Error parsing variable");
+            std::process::exit(1);
+        }
+
+        let key = split[0];
+        let value = split[1];
+        let value: Value = serde_json::from_str(value).unwrap();
+        acc.insert(key.to_string(), value);
+    }
+
+    Value::Object(acc)
 }
