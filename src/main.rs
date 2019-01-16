@@ -68,13 +68,17 @@ enum Opt {
         /// The URL to the GraphQL web service
         #[structopt(short = "h", long = "host")]
         host: String,
-        /// Headers
+        /// Add headers to the request
+        ///
+        /// Should be string of the form
+        ///   -H "Name: Value" -H "Other-Nmae = Other Value"
         #[structopt(short = "H", long = "header")]
         headers: Vec<String>,
-        /// Variables
+        /// Variables to send along with the query
+        ///
         /// Should be string of the form
         ///   -v "someVarName = 1" -v "someOtherVarName = \"foo\""
-        #[structopt(short = "v", long = "vars")]
+        #[structopt(short = "v", long = "var")]
         vars: Vec<String>,
     },
 }
